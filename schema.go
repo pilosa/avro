@@ -147,7 +147,9 @@ func (*StringSchema) MarshalJSON() ([]byte, error) {
 }
 
 // BytesSchema implements Schema and represents Avro bytes type.
-type BytesSchema struct{}
+type BytesSchema struct {
+	Properties map[string]interface{}
+}
 
 // String returns a JSON representation of BytesSchema.
 func (*BytesSchema) String() string {
@@ -164,8 +166,14 @@ func (*BytesSchema) GetName() string {
 	return typeBytes
 }
 
-// Prop doesn't return anything valuable for BytesSchema.
-func (*BytesSchema) Prop(key string) (interface{}, bool) {
+// Prop returns a property on BytesSchema
+func (b *BytesSchema) Prop(key string) (interface{}, bool) {
+	if b.Properties != nil {
+		if prop, ok := b.Properties[key]; ok {
+			return prop, true
+		}
+	}
+
 	return nil, false
 }
 
@@ -995,7 +1003,7 @@ func schemaByType(i interface{}, registry map[string]Schema, namespace string) (
 		case typeDouble:
 			return new(DoubleSchema), nil
 		case typeBytes:
-			return new(BytesSchema), nil
+			return parseBytesSchema(v, registry, namespace)
 		case typeString:
 			return new(StringSchema), nil
 		case typeArray:
@@ -1026,6 +1034,13 @@ func schemaByType(i interface{}, registry map[string]Schema, namespace string) (
 	}
 
 	return nil, ErrInvalidSchema
+}
+
+func parseBytesSchema(v map[string]interface{}, registry map[string]Schema, namespace string) (Schema, error) {
+	schema := &BytesSchema{
+		Properties: getProperties(v),
+	}
+	return schema, nil
 }
 
 func parseEnumSchema(v map[string]interface{}, registry map[string]Schema, namespace string) (Schema, error) {
