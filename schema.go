@@ -186,7 +186,7 @@ func (*BytesSchema) Validate(v reflect.Value) bool {
 
 // MarshalJSON serializes the given schema as JSON. Never returns an error.
 func (*BytesSchema) MarshalJSON() ([]byte, error) {
-	return []byte(`"bytes"`), nil
+	return []byte(`"bytes"`), nil // TODO Fix, complete double and float
 }
 
 // IntSchema implements Schema and represents Avro int type.
@@ -256,7 +256,9 @@ func (*LongSchema) MarshalJSON() ([]byte, error) {
 }
 
 // FloatSchema implements Schema and represents Avro float type.
-type FloatSchema struct{}
+type FloatSchema struct {
+	Properties map[string]interface{}
+}
 
 // String returns a JSON representation of FloatSchema.
 func (*FloatSchema) String() string {
@@ -274,7 +276,13 @@ func (*FloatSchema) GetName() string {
 }
 
 // Prop doesn't return anything valuable for FloatSchema.
-func (*FloatSchema) Prop(key string) (interface{}, bool) {
+func (f *FloatSchema) Prop(key string) (interface{}, bool) {
+	if f.Properties != nil {
+		if prop, ok := f.Properties[key]; ok {
+			return prop, true
+		}
+	}
+
 	return nil, false
 }
 
@@ -289,7 +297,9 @@ func (*FloatSchema) MarshalJSON() ([]byte, error) {
 }
 
 // DoubleSchema implements Schema and represents Avro double type.
-type DoubleSchema struct{}
+type DoubleSchema struct {
+	Properties map[string]interface{}
+}
 
 // Returns a JSON representation of DoubleSchema.
 func (*DoubleSchema) String() string {
@@ -306,8 +316,14 @@ func (*DoubleSchema) GetName() string {
 	return typeDouble
 }
 
-// Prop doesn't return anything valuable for DoubleSchema.
-func (*DoubleSchema) Prop(key string) (interface{}, bool) {
+// Prop
+func (d *DoubleSchema) Prop(key string) (interface{}, bool) {
+	if d.Properties != nil {
+		if prop, ok := d.Properties[key]; ok {
+			return prop, true
+		}
+	}
+
 	return nil, false
 }
 
@@ -999,9 +1015,9 @@ func schemaByType(i interface{}, registry map[string]Schema, namespace string) (
 		case typeLong:
 			return new(LongSchema), nil
 		case typeFloat:
-			return new(FloatSchema), nil
+			return parseFloatSchema(v, registry, namespace)
 		case typeDouble:
-			return new(DoubleSchema), nil
+			return parseDoubleSchema(v, registry, namespace)
 		case typeBytes:
 			return parseBytesSchema(v, registry, namespace)
 		case typeString:
@@ -1038,6 +1054,20 @@ func schemaByType(i interface{}, registry map[string]Schema, namespace string) (
 
 func parseBytesSchema(v map[string]interface{}, registry map[string]Schema, namespace string) (Schema, error) {
 	schema := &BytesSchema{
+		Properties: getProperties(v),
+	}
+	return schema, nil
+}
+
+func parseDoubleSchema(v map[string]interface{}, registry map[string]Schema, namespace string) (Schema, error) {
+	schema := &DoubleSchema{
+		Properties: getProperties(v),
+	}
+	return schema, nil
+}
+
+func parseFloatSchema(v map[string]interface{}, registry map[string]Schema, namespace string) (Schema, error) {
+	schema := &FloatSchema{
 		Properties: getProperties(v),
 	}
 	return schema, nil
