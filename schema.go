@@ -7,6 +7,8 @@ import (
 	"math"
 	"reflect"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 // ***********************
@@ -152,7 +154,7 @@ type BytesSchema struct {
 }
 
 // String returns a JSON representation of BytesSchema.
-func (*BytesSchema) String() string {
+func (b *BytesSchema) String() string {
 	return `{"type": "bytes"}`
 }
 
@@ -166,14 +168,13 @@ func (*BytesSchema) GetName() string {
 	return typeBytes
 }
 
-// Prop returns a property on BytesSchema
+// Prop returns a property on BytesSchema.
 func (b *BytesSchema) Prop(key string) (interface{}, bool) {
 	if b.Properties != nil {
 		if prop, ok := b.Properties[key]; ok {
 			return prop, true
 		}
 	}
-
 	return nil, false
 }
 
@@ -185,8 +186,12 @@ func (*BytesSchema) Validate(v reflect.Value) bool {
 }
 
 // MarshalJSON serializes the given schema as JSON. Never returns an error.
-func (*BytesSchema) MarshalJSON() ([]byte, error) {
-	return []byte(`"bytes"`), nil // TODO Fix, complete double and float
+func (b *BytesSchema) MarshalJSON() ([]byte, error) {
+	props := getProperties(b.Properties)
+	if len(props) > 0 {
+		return insertProps([]byte(`{"type":"bytes"}`), props)
+	}
+	return []byte(`"bytes"`), nil
 }
 
 // IntSchema implements Schema and represents Avro int type.
@@ -223,7 +228,9 @@ func (*IntSchema) MarshalJSON() ([]byte, error) {
 }
 
 // LongSchema implements Schema and represents Avro long type.
-type LongSchema struct{}
+type LongSchema struct {
+	Properties map[string]interface{}
+}
 
 // Returns a JSON representation of LongSchema.
 func (*LongSchema) String() string {
@@ -240,8 +247,13 @@ func (*LongSchema) GetName() string {
 	return typeLong
 }
 
-// Prop doesn't return anything valuable for LongSchema.
-func (*LongSchema) Prop(key string) (interface{}, bool) {
+// Prop returns a property on LongSchema.
+func (l *LongSchema) Prop(key string) (interface{}, bool) {
+	if l.Properties != nil {
+		if prop, ok := l.Properties[key]; ok {
+			return prop, true
+		}
+	}
 	return nil, false
 }
 
@@ -250,8 +262,12 @@ func (*LongSchema) Validate(v reflect.Value) bool {
 	return reflect.TypeOf(dereference(v).Interface()).Kind() == reflect.Int64
 }
 
-// MarshalJSON serializes the given schema as JSON. Never returns an error.
-func (*LongSchema) MarshalJSON() ([]byte, error) {
+// MarshalJSON serializes the given schema as JSON.
+func (l *LongSchema) MarshalJSON() ([]byte, error) {
+	props := getProperties(l.Properties)
+	if len(props) > 0 {
+		return insertProps([]byte(`{"type":"long"}`), props)
+	}
 	return []byte(`"long"`), nil
 }
 
@@ -275,14 +291,13 @@ func (*FloatSchema) GetName() string {
 	return typeFloat
 }
 
-// Prop doesn't return anything valuable for FloatSchema.
+// Prop returns a property on FloatSchema.
 func (f *FloatSchema) Prop(key string) (interface{}, bool) {
 	if f.Properties != nil {
 		if prop, ok := f.Properties[key]; ok {
 			return prop, true
 		}
 	}
-
 	return nil, false
 }
 
@@ -292,7 +307,11 @@ func (*FloatSchema) Validate(v reflect.Value) bool {
 }
 
 // MarshalJSON serializes the given schema as JSON. Never returns an error.
-func (*FloatSchema) MarshalJSON() ([]byte, error) {
+func (f *FloatSchema) MarshalJSON() ([]byte, error) {
+	props := getProperties(f.Properties)
+	if len(props) > 0 {
+		return insertProps([]byte(`{"type":"float"}`), props)
+	}
 	return []byte(`"float"`), nil
 }
 
@@ -316,14 +335,13 @@ func (*DoubleSchema) GetName() string {
 	return typeDouble
 }
 
-// Prop
+// Prop returns a property on DoubleSchema.
 func (d *DoubleSchema) Prop(key string) (interface{}, bool) {
 	if d.Properties != nil {
 		if prop, ok := d.Properties[key]; ok {
 			return prop, true
 		}
 	}
-
 	return nil, false
 }
 
@@ -576,7 +594,7 @@ type SchemaField struct {
 	Properties map[string]interface{}
 }
 
-// Gets a custom non-reserved property from this schemafield and a bool representing if it exists.
+// Prop gets a custom non-reserved property from this schemafield and a bool representing if it exists.
 func (this *SchemaField) Prop(key string) (interface{}, bool) {
 	if this.Properties != nil {
 		if prop, ok := this.Properties[key]; ok {
@@ -588,8 +606,11 @@ func (this *SchemaField) Prop(key string) (interface{}, bool) {
 
 // MarshalJSON serializes the given schema field as JSON.
 func (s *SchemaField) MarshalJSON() ([]byte, error) {
+	var b []byte
+	var err error
+
 	if s.Type.Type() == Null || (s.Type.Type() == Union && s.Type.(*UnionSchema).Types[0].Type() == Null) {
-		return json.Marshal(struct {
+		b, err = json.Marshal(struct {
 			Name    string      `json:"name,omitempty"`
 			Doc     string      `json:"doc,omitempty"`
 			Default interface{} `json:"default"`
@@ -600,24 +621,55 @@ func (s *SchemaField) MarshalJSON() ([]byte, error) {
 			Default: s.Default,
 			Type:    s.Type,
 		})
+	} else {
+		b, err = json.Marshal(struct {
+			Name    string      `json:"name,omitempty"`
+			Doc     string      `json:"doc,omitempty"`
+			Default interface{} `json:"default,omitempty"`
+			Type    Schema      `json:"type,omitempty"`
+		}{
+			Name:    s.Name,
+			Doc:     s.Doc,
+			Default: s.Default,
+			Type:    s.Type,
+		})
+	}
+	if err != nil {
+		return nil, errors.Wrap(err, "marshaling schema field")
 	}
 
-	return json.Marshal(struct {
-		Name    string      `json:"name,omitempty"`
-		Doc     string      `json:"doc,omitempty"`
-		Default interface{} `json:"default,omitempty"`
-		Type    Schema      `json:"type,omitempty"`
-	}{
-		Name:    s.Name,
-		Doc:     s.Doc,
-		Default: s.Default,
-		Type:    s.Type,
-	})
+	return insertProps(b, s.Properties)
+}
+
+// insertProps flattens the Properties map and inserts it as attributes
+// at the root level of b.
+func insertProps(b []byte, props map[string]interface{}) ([]byte, error) {
+	if len(props) == 0 {
+		return b, nil
+	}
+
+	// remove reserved keys
+	props = getProperties(props)
+
+	pb, err := json.Marshal(props)
+	if err != nil {
+		return nil, errors.Wrap(err, "marshaling properties")
+	}
+	pb[0] = ','
+	return append(b[0:len(b)-1], pb...), nil
 }
 
 // String returns a JSON representation of SchemaField.
 func (s *SchemaField) String() string {
 	return fmt.Sprintf("[SchemaField: Name: %s, Doc: %s, Default: %v, Type: %s]", s.Name, s.Doc, s.Default, s.Type)
+}
+
+// AddProperty adds a key/value entry to the Properties map.
+func (s *SchemaField) AddProperty(key string, val interface{}) {
+	if s.Properties == nil {
+		s.Properties = make(map[string]interface{})
+	}
+	s.Properties[key] = val
 }
 
 // EnumSchema implements Schema and represents Avro enum type.
@@ -1013,7 +1065,7 @@ func schemaByType(i interface{}, registry map[string]Schema, namespace string) (
 		case typeInt:
 			return new(IntSchema), nil
 		case typeLong:
-			return new(LongSchema), nil
+			return parseLongSchema(v, registry, namespace)
 		case typeFloat:
 			return parseFloatSchema(v, registry, namespace)
 		case typeDouble:
@@ -1054,6 +1106,13 @@ func schemaByType(i interface{}, registry map[string]Schema, namespace string) (
 
 func parseBytesSchema(v map[string]interface{}, registry map[string]Schema, namespace string) (Schema, error) {
 	schema := &BytesSchema{
+		Properties: getProperties(v),
+	}
+	return schema, nil
+}
+
+func parseLongSchema(v map[string]interface{}, registry map[string]Schema, namespace string) (Schema, error) {
+	schema := &LongSchema{
 		Properties: getProperties(v),
 	}
 	return schema, nil
