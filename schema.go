@@ -115,7 +115,9 @@ type Schema interface {
 }
 
 // StringSchema implements Schema and represents Avro string type.
-type StringSchema struct{}
+type StringSchema struct {
+	Properties map[string]interface{}
+}
 
 // Returns a JSON representation of StringSchema.
 func (*StringSchema) String() string {
@@ -132,8 +134,13 @@ func (*StringSchema) GetName() string {
 	return typeString
 }
 
-// Prop doesn't return anything valuable for StringSchema.
-func (*StringSchema) Prop(key string) (interface{}, bool) {
+// Prop returns a property on StringSchema.
+func (s *StringSchema) Prop(key string) (interface{}, bool) {
+	if s.Properties != nil {
+		if prop, ok := s.Properties[key]; ok {
+			return prop, true
+		}
+	}
 	return nil, false
 }
 
@@ -143,8 +150,12 @@ func (*StringSchema) Validate(v reflect.Value) bool {
 	return ok
 }
 
-// MarshalJSON serializes the given schema as JSON. Never returns an error.
-func (*StringSchema) MarshalJSON() ([]byte, error) {
+// MarshalJSON serializes the given schema as JSON.
+func (s *StringSchema) MarshalJSON() ([]byte, error) {
+	props := getProperties(s.Properties)
+	if len(props) > 0 {
+		return insertProps([]byte(`{"type":"string"}`), props)
+	}
 	return []byte(`"string"`), nil
 }
 
@@ -1073,7 +1084,7 @@ func schemaByType(i interface{}, registry map[string]Schema, namespace string) (
 		case typeBytes:
 			return parseBytesSchema(v, registry, namespace)
 		case typeString:
-			return new(StringSchema), nil
+			return parseStringSchema(v, registry, namespace)
 		case typeArray:
 			items, err := schemaByType(v[schemaItemsField], registry, namespace)
 			if err != nil {
@@ -1106,6 +1117,13 @@ func schemaByType(i interface{}, registry map[string]Schema, namespace string) (
 
 func parseBytesSchema(v map[string]interface{}, registry map[string]Schema, namespace string) (Schema, error) {
 	schema := &BytesSchema{
+		Properties: getProperties(v),
+	}
+	return schema, nil
+}
+
+func parseStringSchema(v map[string]interface{}, registry map[string]Schema, namespace string) (Schema, error) {
+	schema := &StringSchema{
 		Properties: getProperties(v),
 	}
 	return schema, nil
