@@ -7,8 +7,6 @@ import (
 	"math"
 	"reflect"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 // ***********************
@@ -154,7 +152,8 @@ func (*StringSchema) Validate(v reflect.Value) bool {
 func (s *StringSchema) MarshalJSON() ([]byte, error) {
 	props := getProperties(s.Properties)
 	if len(props) > 0 {
-		return insertProps([]byte(`{"type":"string"}`), props)
+		props["type"] = "string"
+		return json.Marshal(props)
 	}
 	return []byte(`"string"`), nil
 }
@@ -200,7 +199,8 @@ func (*BytesSchema) Validate(v reflect.Value) bool {
 func (b *BytesSchema) MarshalJSON() ([]byte, error) {
 	props := getProperties(b.Properties)
 	if len(props) > 0 {
-		return insertProps([]byte(`{"type":"bytes"}`), props)
+		props["type"] = "bytes"
+		return json.Marshal(props)
 	}
 	return []byte(`"bytes"`), nil
 }
@@ -277,7 +277,8 @@ func (*LongSchema) Validate(v reflect.Value) bool {
 func (l *LongSchema) MarshalJSON() ([]byte, error) {
 	props := getProperties(l.Properties)
 	if len(props) > 0 {
-		return insertProps([]byte(`{"type":"long"}`), props)
+		props["type"] = "long"
+		return json.Marshal(props)
 	}
 	return []byte(`"long"`), nil
 }
@@ -321,7 +322,8 @@ func (*FloatSchema) Validate(v reflect.Value) bool {
 func (f *FloatSchema) MarshalJSON() ([]byte, error) {
 	props := getProperties(f.Properties)
 	if len(props) > 0 {
-		return insertProps([]byte(`{"type":"float"}`), props)
+		props["type"] = "float"
+		return json.Marshal(props)
 	}
 	return []byte(`"float"`), nil
 }
@@ -617,11 +619,8 @@ func (this *SchemaField) Prop(key string) (interface{}, bool) {
 
 // MarshalJSON serializes the given schema field as JSON.
 func (s *SchemaField) MarshalJSON() ([]byte, error) {
-	var b []byte
-	var err error
-
 	if s.Type.Type() == Null || (s.Type.Type() == Union && s.Type.(*UnionSchema).Types[0].Type() == Null) {
-		b, err = json.Marshal(struct {
+		return json.Marshal(struct {
 			Name    string      `json:"name,omitempty"`
 			Doc     string      `json:"doc,omitempty"`
 			Default interface{} `json:"default"`
@@ -632,42 +631,18 @@ func (s *SchemaField) MarshalJSON() ([]byte, error) {
 			Default: s.Default,
 			Type:    s.Type,
 		})
-	} else {
-		b, err = json.Marshal(struct {
-			Name    string      `json:"name,omitempty"`
-			Doc     string      `json:"doc,omitempty"`
-			Default interface{} `json:"default,omitempty"`
-			Type    Schema      `json:"type,omitempty"`
-		}{
-			Name:    s.Name,
-			Doc:     s.Doc,
-			Default: s.Default,
-			Type:    s.Type,
-		})
 	}
-	if err != nil {
-		return nil, errors.Wrap(err, "marshaling schema field")
-	}
-
-	return insertProps(b, s.Properties)
-}
-
-// insertProps flattens the Properties map and inserts it as attributes
-// at the root level of b.
-func insertProps(b []byte, props map[string]interface{}) ([]byte, error) {
-	if len(props) == 0 {
-		return b, nil
-	}
-
-	// remove reserved keys
-	props = getProperties(props)
-
-	pb, err := json.Marshal(props)
-	if err != nil {
-		return nil, errors.Wrap(err, "marshaling properties")
-	}
-	pb[0] = ','
-	return append(b[0:len(b)-1], pb...), nil
+	return json.Marshal(struct {
+		Name    string      `json:"name,omitempty"`
+		Doc     string      `json:"doc,omitempty"`
+		Default interface{} `json:"default,omitempty"`
+		Type    Schema      `json:"type,omitempty"`
+	}{
+		Name:    s.Name,
+		Doc:     s.Doc,
+		Default: s.Default,
+		Type:    s.Type,
+	})
 }
 
 // String returns a JSON representation of SchemaField.
